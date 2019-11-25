@@ -1,3 +1,7 @@
+"""
+    基本的全连接网络搭建
+
+"""
 import os
 import tensorflow as tf
 from tensorflow import keras
