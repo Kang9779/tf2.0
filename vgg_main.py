@@ -1,3 +1,8 @@
+'''
+    using cifar10 datasets to train VGG16
+    time 2019-11-27
+'''
+
 import os
 import tensorflow as tf
 from tensorflow import keras
