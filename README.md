@@ -16,6 +16,11 @@
 > tf.cast(input,dtype=None)
 - 实现input的类型转换
     - 例如：x = tf.cast(x,dtype=tf.float32)
+> model.build(input_shape=None)
+- 给定模型输入，自动推导每层的形状
+> model.summary()
+- 打印出model的层级结构
+
 
 
 
