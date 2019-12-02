@@ -1,5 +1,14 @@
 # tf2.0
-#### 1.常用函数解释
+#### 1.文件使用说明
+##### 例子1：
+> 模型文件：CycleGan.py
+> 运行文件：CycleGan_main.py
+> run python CycleGan_main.py
+
+> 模型文件：VAE.py
+> 运行文件：VAE_main.py
+> run python VAE_main.py
+#### 2.常用函数解释
 > tf.matmul(x,y)
 - 实现两个矩阵x和y相乘
 
@@ -20,7 +29,6 @@
 - 给定模型输入，自动推导每层的形状
 > model.summary()
 - 打印出model的层级结构
-
 
 
 
