@@ -2,7 +2,7 @@
 
 from tensorflow.keras.layers import *
 import tensorflow.keras.backend as K
-
+# from tensorflow.contrib.seq2seq import AttentionWrapper,BahdanauAttention,LuongAttention
 
 def to_mask(x, mask, mode='mul'):
     """通用mask函数
@@ -37,6 +37,7 @@ def extract_seq_patches(x, kernel_size, rate):
 class OurLayer(Layer):
     """定义新的Layer，增加reuse方法，允许在定义Layer时调用现成的层
     """
+
     def reuse(self, layer, *args, **kwargs):
         if not layer.built:
             if len(args) > 0:
@@ -66,6 +67,7 @@ class OurLayer(Layer):
 class Attention(OurLayer):
     """多头注意力机制
     """
+
     def __init__(self, heads, size_per_head, key_size=None,
                  mask_right=False, **kwargs):
         super(Attention, self).__init__(**kwargs)
@@ -74,11 +76,13 @@ class Attention(OurLayer):
         self.out_dim = heads * size_per_head
         self.key_size = key_size if key_size else size_per_head
         self.mask_right = mask_right
+
     def build(self, input_shape):
         super(Attention, self).build(input_shape)
         self.q_dense = Dense(self.key_size * self.heads, use_bias=False)
         self.k_dense = Dense(self.key_size * self.heads, use_bias=False)
         self.v_dense = Dense(self.out_dim, use_bias=False)
+
     def call(self, inputs):
         q, k, v = inputs[: 3]
         v_mask, q_mask = None, None
@@ -94,7 +98,8 @@ class Attention(OurLayer):
         # 形状变换
         qw = K.reshape(qw, (-1, K.shape(qw)[1], self.heads, self.key_size))
         kw = K.reshape(kw, (-1, K.shape(kw)[1], self.heads, self.key_size))
-        vw = K.reshape(vw, (-1, K.shape(vw)[1], self.heads, self.size_per_head))
+        vw = K.reshape(
+            vw, (-1, K.shape(vw)[1], self.heads, self.size_per_head))
         # 维度置换
         qw = K.permute_dimensions(qw, (0, 2, 1, 3))
         kw = K.permute_dimensions(kw, (0, 2, 1, 3))
@@ -123,6 +128,7 @@ class Attention(OurLayer):
         o = K.reshape(o, (-1, K.shape(o)[1], self.out_dim))
         o = to_mask(o, q_mask, 'mul')
         return o
+
     def compute_output_shape(self, input_shape):
         return (input_shape[0][0], input_shape[0][1], self.out_dim)
 
@@ -130,6 +136,7 @@ class Attention(OurLayer):
 class SelfAttention(OurLayer):
     """多头自注意力机制
     """
+
     def __init__(self, heads, size_per_head, key_size=None,
                  mask_right=False, **kwargs):
         super(SelfAttention, self).__init__(**kwargs)
@@ -138,6 +145,7 @@ class SelfAttention(OurLayer):
         self.out_dim = heads * size_per_head
         self.key_size = key_size if key_size else size_per_head
         self.mask_right = mask_right
+
     def build(self, input_shape):
         super(SelfAttention, self).build(input_shape)
         self.attention = Attention(
@@ -146,6 +154,7 @@ class SelfAttention(OurLayer):
             self.key_size,
             self.mask_right
         )
+
     def call(self, inputs):
         if isinstance(inputs, list):
             x, x_mask = inputs
@@ -154,6 +163,7 @@ class SelfAttention(OurLayer):
             x = inputs
             o = self.reuse(self.attention, [x, x, x])
         return o
+
     def compute_output_shape(self, input_shape):
         if isinstance(input_shape, list):
             return (input_shape[0][0], input_shape[0][1], self.out_dim)
@@ -165,6 +175,7 @@ class AtrousSelfAttention(OurLayer):
     """空洞多头自注意力机制
     说明：每个元素只跟相对距离为rate的倍数的元素有关联。
     """
+
     def __init__(self, heads, size_per_head, rate=1,
                  key_size=None, mask_right=False, **kwargs):
         super(AtrousSelfAttention, self).__init__(**kwargs)
@@ -174,6 +185,7 @@ class AtrousSelfAttention(OurLayer):
         self.key_size = key_size if key_size else size_per_head
         self.rate = rate
         self.mask_right = mask_right
+
     def build(self, input_shape):
         super(AtrousSelfAttention, self).build(input_shape)
         self.attention = Attention(
@@ -182,6 +194,7 @@ class AtrousSelfAttention(OurLayer):
             self.key_size,
             self.mask_right
         )
+
     def call(self, inputs):
         if isinstance(inputs, list):
             x, x_mask = inputs
@@ -200,7 +213,8 @@ class AtrousSelfAttention(OurLayer):
         x = K.permute_dimensions(x, (0, 2, 1, 3))
         x = K.reshape(x, (-1, new_seq_len // self.rate, seq_dim))
         if x_mask is not None:
-            x_mask = K.reshape(x_mask, (-1, new_seq_len // self.rate, self.rate, 1))
+            x_mask = K.reshape(
+                x_mask, (-1, new_seq_len // self.rate, self.rate, 1))
             x_mask = K.permute_dimensions(x_mask, (0, 2, 1, 3))
             x_mask = K.reshape(x_mask, (-1, new_seq_len // self.rate, 1))
         # 做attention
@@ -209,11 +223,13 @@ class AtrousSelfAttention(OurLayer):
         else:
             x = self.reuse(self.attention, [x, x, x])
         # 恢复shape
-        x = K.reshape(x, (-1, self.rate, new_seq_len // self.rate, self.out_dim))
+        x = K.reshape(x, (-1, self.rate, new_seq_len //
+                          self.rate, self.out_dim))
         x = K.permute_dimensions(x, (0, 2, 1, 3))
         x = K.reshape(x, (-1, new_seq_len, self.out_dim))
         x = x[:, : - pad_len]
         return x
+
     def compute_output_shape(self, input_shape):
         if isinstance(input_shape, list):
             return (input_shape[0][0], input_shape[0][1], self.out_dim)
@@ -226,6 +242,7 @@ class LocalSelfAttention(OurLayer):
     说明：每个元素只跟相对距离不超过neighbors的元素有关联，这里的rate
     是真正的膨胀率（跟膨胀卷积一样），如果不了解可以忽略，默认为1就好。
     """
+
     def __init__(self, heads, size_per_head, neighbors=1, rate=1,
                  key_size=None, mask_right=False, **kwargs):
         super(LocalSelfAttention, self).__init__(**kwargs)
@@ -236,11 +253,12 @@ class LocalSelfAttention(OurLayer):
         self.neighbors = neighbors
         self.rate = rate
         self.mask_right = mask_right
+
     def build(self, input_shape):
         super(LocalSelfAttention, self).build(input_shape)
         if self.mask_right:
             mask_right = np.ones((1, 1 + 2 * self.neighbors))
-            mask_right[:, - self.neighbors : ] = 0
+            mask_right[:, - self.neighbors:] = 0
         else:
             mask_right = self.mask_right
         self.attention = Attention(
@@ -249,6 +267,7 @@ class LocalSelfAttention(OurLayer):
             self.key_size,
             mask_right
         )
+
     def call(self, inputs):
         if isinstance(inputs, list):
             x, x_mask = inputs
@@ -275,6 +294,7 @@ class LocalSelfAttention(OurLayer):
         x = K.reshape(x, (-1, seq_len, self.out_dim))
         x = to_mask(x, x_mask, 'mul')
         return x
+
     def compute_output_shape(self, input_shape):
         if isinstance(input_shape, list):
             return (input_shape[0][0], input_shape[0][1], self.out_dim)
@@ -287,6 +307,7 @@ class SparseSelfAttention(OurLayer):
     来自文章《Generating Long Sequences with Sparse Transformers》
     说明：每个元素只跟相对距离为rate的倍数的元素、以及相对距离不超过rate的元素有关联。
     """
+
     def __init__(self, heads, size_per_head, rate=2,
                  key_size=None, mask_right=False, **kwargs):
         super(SparseSelfAttention, self).__init__(**kwargs)
@@ -298,11 +319,13 @@ class SparseSelfAttention(OurLayer):
         self.rate = rate
         self.neighbors = rate - 1
         self.mask_right = mask_right
+
     def build(self, input_shape):
         super(SparseSelfAttention, self).build(input_shape)
         self.q_dense = Dense(self.key_size * self.heads, use_bias=False)
         self.k_dense = Dense(self.key_size * self.heads, use_bias=False)
         self.v_dense = Dense(self.out_dim, use_bias=False)
+
     def call(self, inputs):
         if isinstance(inputs, list):
             x, x_mask = inputs
@@ -316,32 +339,44 @@ class SparseSelfAttention(OurLayer):
         if x_mask is not None:
             x_mask = K.temporal_padding(x_mask, (0, pad_len))
         new_seq_len = K.shape(x)[1]
-        x = K.reshape(x, (-1, new_seq_len, seq_dim)) # 经过padding后shape可能变为None，所以重新声明一下shape
+        # 经过padding后shape可能变为None，所以重新声明一下shape
+        x = K.reshape(x, (-1, new_seq_len, seq_dim))
         # 线性变换
         qw = self.reuse(self.q_dense, x)
         kw = self.reuse(self.k_dense, x)
         vw = self.reuse(self.v_dense, x)
         # 提取局部特征
         kernel_size = 1 + 2 * self.neighbors
-        kwp = extract_seq_patches(kw, kernel_size, self.rate) # shape=[None, seq_len, kernel_size, out_dim]
-        vwp = extract_seq_patches(vw, kernel_size, self.rate) # shape=[None, seq_len, kernel_size, out_dim]
+        # shape=[None, seq_len, kernel_size, out_dim]
+        kwp = extract_seq_patches(kw, kernel_size, self.rate)
+        # shape=[None, seq_len, kernel_size, out_dim]
+        vwp = extract_seq_patches(vw, kernel_size, self.rate)
         if x_mask is not None:
             xp_mask = extract_seq_patches(x_mask, kernel_size, self.rate)
         # 形状变换
-        qw = K.reshape(qw, (-1, new_seq_len // self.rate, self.rate, self.heads, self.key_size))
-        kw = K.reshape(kw, (-1, new_seq_len // self.rate, self.rate, self.heads, self.key_size))
-        vw = K.reshape(vw, (-1, new_seq_len // self.rate, self.rate, self.heads, self.size_per_head))
-        kwp = K.reshape(kwp, (-1, new_seq_len // self.rate, self.rate, kernel_size, self.heads, self.key_size))
-        vwp = K.reshape(vwp, (-1, new_seq_len // self.rate, self.rate, kernel_size, self.heads, self.size_per_head))
+        qw = K.reshape(qw, (-1, new_seq_len // self.rate,
+                            self.rate, self.heads, self.key_size))
+        kw = K.reshape(kw, (-1, new_seq_len // self.rate,
+                            self.rate, self.heads, self.key_size))
+        vw = K.reshape(vw, (-1, new_seq_len // self.rate,
+                            self.rate, self.heads, self.size_per_head))
+        kwp = K.reshape(kwp, (-1, new_seq_len // self.rate,
+                              self.rate, kernel_size, self.heads, self.key_size))
+        vwp = K.reshape(vwp, (-1, new_seq_len // self.rate,
+                              self.rate, kernel_size, self.heads, self.size_per_head))
         if x_mask is not None:
-            x_mask = K.reshape(x_mask, (-1, new_seq_len // self.rate, self.rate, 1, 1))
-            xp_mask = K.reshape(xp_mask, (-1, new_seq_len // self.rate, self.rate, kernel_size, 1, 1))
+            x_mask = K.reshape(
+                x_mask, (-1, new_seq_len // self.rate, self.rate, 1, 1))
+            xp_mask = K.reshape(
+                xp_mask, (-1, new_seq_len // self.rate, self.rate, kernel_size, 1, 1))
         # 维度置换
-        qw = K.permute_dimensions(qw, (0, 3, 2, 1, 4)) # shape=[None, heads, r, seq_len // r, size]
+        # shape=[None, heads, r, seq_len // r, size]
+        qw = K.permute_dimensions(qw, (0, 3, 2, 1, 4))
         kw = K.permute_dimensions(kw, (0, 3, 2, 1, 4))
         vw = K.permute_dimensions(vw, (0, 3, 2, 1, 4))
         qwp = K.expand_dims(qw, 4)
-        kwp = K.permute_dimensions(kwp, (0, 4, 2, 1, 3, 5)) # shape=[None, heads, r, seq_len // r, kernel_size, out_dim]
+        # shape=[None, heads, r, seq_len // r, kernel_size, out_dim]
+        kwp = K.permute_dimensions(kwp, (0, 4, 2, 1, 3, 5))
         vwp = K.permute_dimensions(vwp, (0, 4, 2, 1, 3, 5))
         if x_mask is not None:
             x_mask = K.permute_dimensions(x_mask, (0, 3, 2, 1, 4))
@@ -363,7 +398,7 @@ class SparseSelfAttention(OurLayer):
         ap = K.permute_dimensions(ap, (0, 1, 2, 3, 5, 4))
         if self.mask_right:
             mask = np.ones((1, kernel_size))
-            mask[:, - self.neighbors : ] = 0
+            mask[:, - self.neighbors:] = 0
             mask = (1 - K.constant(mask)) * 1e10
             for _ in range(4):
                 mask = K.expand_dims(mask, 0)
@@ -372,7 +407,7 @@ class SparseSelfAttention(OurLayer):
         # 合并两个Attention
         A = K.concatenate([a, ap], -1)
         A = K.softmax(A)
-        a, ap = A[..., : K.shape(a)[-1]], A[..., K.shape(a)[-1] : ]
+        a, ap = A[..., : K.shape(a)[-1]], A[..., K.shape(a)[-1]:]
         # 完成输出1
         o1 = K.batch_dot(a, vw, [4, 3])
         # 完成输出2
@@ -386,6 +421,7 @@ class SparseSelfAttention(OurLayer):
         o = K.reshape(o, (-1, new_seq_len, self.out_dim))
         o = o[:, : - pad_len]
         return o
+
     def compute_output_shape(self, input_shape):
         if isinstance(input_shape, list):
             return (input_shape[0][0], input_shape[0][1], self.out_dim)
@@ -396,12 +432,14 @@ class SparseSelfAttention(OurLayer):
 class TrainablePositionEmbedding(OurLayer):
     """定义位置Embedding，直接训练出来
     """
+
     def __init__(self, maxlen, v_dim,
                  merge_mode='add', **kwargs):
         super(TrainablePositionEmbedding, self).__init__(**kwargs)
         self.maxlen = maxlen
         self.v_dim = v_dim
         self.merge_mode = merge_mode
+
     def build(self, input_shape):
         super(TrainablePositionEmbedding, self).build(input_shape)
         self.embeddings = self.add_weight(
@@ -409,6 +447,7 @@ class TrainablePositionEmbedding(OurLayer):
             shape=(self.maxlen, self.v_dim),
             initializer='zeros'
         )
+
     def call(self, inputs):
         """允许传入r（当前位置id）来得到相对位置向量
         """
@@ -425,6 +464,7 @@ class TrainablePositionEmbedding(OurLayer):
             return pv + x
         else:
             return K.concatenate([x, pv])
+
     def compute_output_shape(self, input_shape):
         if self.merge_mode == 'add':
             return input_shape
@@ -435,11 +475,13 @@ class TrainablePositionEmbedding(OurLayer):
 class SinCosPositionEmbedding(Layer):
     """Google提出来的Sin-Cos形式的位置Embedding
     """
+
     def __init__(self, v_dim,
                  merge_mode='add', **kwargs):
         super(SinCosPositionEmbedding, self).__init__(**kwargs)
         self.v_dim = v_dim
         self.merge_mode = merge_mode
+
     def call(self, inputs):
         """允许传入r（当前位置id）来得到相对位置向量
         """
@@ -456,16 +498,19 @@ class SinCosPositionEmbedding(Layer):
             return pv + x
         else:
             return K.concatenate([x, pv])
+
     def idx2pos(self, pid):
         pid = K.cast(pid, 'float32')
         pid = K.expand_dims(pid, 2)
-        pj = 1. / K.pow(10000., 2. / self.v_dim * K.arange(self.v_dim // 2, dtype='float32'))
+        pj = 1. / K.pow(10000., 2. / self.v_dim *
+                        K.arange(self.v_dim // 2, dtype='float32'))
         pj = K.expand_dims(pj, 0)
         pv = K.dot(pid, pj)
         pv1, pv2 = K.sin(pv), K.cos(pv)
         pv1, pv2 = K.expand_dims(pv1, 3), K.expand_dims(pv2, 3)
         pv = K.concatenate([pv1, pv2], 3)
         return K.reshape(pv, (K.shape(pv)[0], K.shape(pv)[1], self.v_dim))
+
     def compute_output_shape(self, input_shape):
         if self.merge_mode == 'add':
             return input_shape
